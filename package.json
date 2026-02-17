@@ -1,0 +1,39 @@
+{
+  "name": "cloudflare-dns-mcp-server",
+  "version": "1.0.0",
+  "description": "Best-of-breed MCP server for Cloudflare DNS management with extreme token efficiency",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "dev:http": "TRANSPORT=http tsx watch src/index.ts",
+    "clean": "rm -rf dist",
+    "deploy": "pnpm build && wrangler deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.9",
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "cloudflare": "^4.5.0",
+    "hono": "^4.7.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250214.0",
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "wrangler": "^4.0.0"
+  },
+  "author": "Piers <piers@mm.st>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/piersdd/cloudflare-platform-mcp.git"
+  }
+}
