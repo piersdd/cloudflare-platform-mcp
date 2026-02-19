@@ -159,6 +159,22 @@ For production use behind a custom domain:
 2. TLS is automatic via Cloudflare's edge certificates
 3. Optionally put it behind Cloudflare Access for SSO authentication
 
+### Bearer Token Authentication
+
+When exposing the server through a tunnel or reverse proxy, set `MCP_API_TOKEN` to require a bearer token on every request:
+
+```bash
+export MCP_API_TOKEN=your-secret-token-here
+```
+
+All HTTP requests must then include the header:
+
+```
+Authorization: Bearer your-secret-token-here
+```
+
+Requests without a valid token receive `401 Unauthorized`. If the env var is **unset or empty**, bearer auth is disabled and the server falls back to the existing `X-API-Key` mechanism (suitable for localhost-only access).
+
 ### Via Cloudflare Tunnel
 
 For exposing a local instance:
@@ -174,7 +190,8 @@ cloudflared tunnel --url http://localhost:8787
 | `CLOUDFLARE_API_TOKEN` | Yes | — | Cloudflare API token with Zone:Read + DNS:Edit |
 | `TRANSPORT` | No | `stdio` | `stdio` or `http` |
 | `PORT` | No | `8787` | HTTP server port (http transport only) |
-| `CLOUDFLARE_DNS_MCP_API_KEY` | No | auto-generated | API key for HTTP transport authentication |
+| `MCP_API_TOKEN` | No | (none) | Bearer token for HTTP auth — if set, requires `Authorization: Bearer <token>` |
+| `CLOUDFLARE_DNS_MCP_API_KEY` | No | auto-generated | API key for HTTP transport authentication (X-API-Key header) |
 
 ## Development
 

@@ -1,11 +1,50 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 
 /**
- * Middleware logic for API key authentication on the HTTP transport.
+ * Authentication for the HTTP transport.
  *
- * Reads CLOUDFLARE_DNS_MCP_API_KEY from env. If not set, auto-generates
- * a random 32-byte hex key and logs it to stderr on first access.
+ * Two independent auth layers:
+ *
+ * 1. **Bearer token** (remote / tunnel access):
+ *    Set `MCP_API_TOKEN` env var.  Every HTTP request must include
+ *    `Authorization: Bearer <token>`.  If the env var is unset or empty,
+ *    bearer auth is disabled — localhost-only setups work without config.
+ *
+ * 2. **X-API-Key** (existing, local convenience):
+ *    Set `CLOUDFLARE_DNS_MCP_API_KEY` env var (or let it auto-generate).
+ *    Checked via `X-API-Key` header or `?api_key=` query param.
+ *    Only enforced when bearer auth is *not* active.
  */
+
+// ─── Bearer token auth (MCP_API_TOKEN) ──────────────────────────
+
+let _bearerToken: string | null | undefined = undefined; // undefined = not yet checked
+
+export function getBearerToken(): string | null {
+  if (_bearerToken !== undefined) return _bearerToken;
+  const token = (process.env.MCP_API_TOKEN || "").trim();
+  _bearerToken = token || null;
+  return _bearerToken;
+}
+
+/**
+ * Validate an Authorization: Bearer header value against MCP_API_TOKEN.
+ * Returns true if valid, false if invalid. Returns null if bearer auth
+ * is not configured (caller should fall through to other auth).
+ */
+export function validateBearerToken(authHeader: string | null | undefined): boolean | null {
+  const expected = getBearerToken();
+  if (!expected) return null; // Bearer auth not configured
+
+  if (!authHeader) return false;
+  const match = authHeader.match(/^Bearer\s+(.+)$/i);
+  if (!match) return false;
+
+  const provided = match[1];
+  return safeCompare(provided, expected);
+}
+
+// ─── X-API-Key auth (CLOUDFLARE_DNS_MCP_API_KEY) ────────────────
 
 let _apiKey: string | null = null;
 
@@ -42,11 +81,16 @@ export function validateApiKey(
   const provided = headerValue || queryValue;
   if (!provided) return false;
 
-  // Constant-time comparison to prevent timing attacks
-  if (provided.length !== expected.length) return false;
-  let mismatch = 0;
-  for (let i = 0; i < provided.length; i++) {
-    mismatch |= provided.charCodeAt(i) ^ expected.charCodeAt(i);
+  return safeCompare(provided, expected);
+}
+
+// ─── Helpers ────────────────────────────────────────────────────
+
+function safeCompare(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  try {
+    return timingSafeEqual(Buffer.from(a), Buffer.from(b));
+  } catch {
+    return false;
   }
-  return mismatch === 0;
 }

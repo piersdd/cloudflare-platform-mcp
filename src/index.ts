@@ -12,7 +12,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { Hono } from "hono";
 import { createServer } from "./server.js";
 import { validateToken } from "./services/cloudflare.js";
-import { validateApiKey } from "./services/auth.js";
+import { getBearerToken, validateApiKey, validateBearerToken } from "./services/auth.js";
 
 // ─── stdio transport ─────────────────────────────────────────────
 
@@ -49,17 +49,34 @@ async function runHttp(): Promise<void> {
 
   const app = new Hono();
 
+  // Bearer token middleware — when MCP_API_TOKEN is set, every request must
+  // carry a matching Authorization: Bearer header. If unset, pass through.
+  app.use("/*", async (c, next) => {
+    const result = validateBearerToken(c.req.header("Authorization") ?? null);
+    if (result === null) {
+      // Bearer auth not configured — fall through to per-route auth
+      await next();
+      return;
+    }
+    if (!result) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    await next();
+  });
+
   // Health check
   app.get("/health", (c) => c.json({ status: "ok", server: "cloudflare-dns-mcp-server" }));
 
   // MCP endpoint — Streamable HTTP
   app.post("/mcp", async (c) => {
-    // API key auth
-    const apiKeyHeader = c.req.header("X-API-Key") ?? null;
-    const apiKeyQuery = new URL(c.req.url).searchParams.get("api_key");
+    // X-API-Key auth (only reached when bearer auth is not configured)
+    if (!getBearerToken()) {
+      const apiKeyHeader = c.req.header("X-API-Key") ?? null;
+      const apiKeyQuery = new URL(c.req.url).searchParams.get("api_key");
 
-    if (!validateApiKey(apiKeyHeader, apiKeyQuery)) {
-      return c.json({ error: "Unauthorized. Provide X-API-Key header or ?api_key= query parameter." }, 401);
+      if (!validateApiKey(apiKeyHeader, apiKeyQuery)) {
+        return c.json({ error: "Unauthorized. Provide X-API-Key header or ?api_key= query parameter." }, 401);
+      }
     }
 
     // Create a fresh transport + server per request (stateless)
@@ -103,6 +120,11 @@ async function runHttp(): Promise<void> {
   // Start the Node.js HTTP server using Hono's serve helper
   const { serve } = await import("@hono/node-server");
   serve({ fetch: app.fetch, port }, () => {
+    if (getBearerToken()) {
+      console.error("  ✓ Bearer token auth enabled (MCP_API_TOKEN is set)");
+    } else {
+      console.error("  ⚠ Bearer token auth disabled (no MCP_API_TOKEN)");
+    }
     console.error(`  ✓ MCP server running at http://localhost:${port}/mcp`);
     console.error(`  ✓ Health check at http://localhost:${port}/health`);
   });
